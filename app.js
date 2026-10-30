@@ -9,7 +9,7 @@ const INT = Math.floor;
 const STORE_BILLING = 'https://store.microsoft.com/billing';
 const PRO_SKU = 'budgetpress_pro';
 const PRO_IDS = [PRO_SKU];
-let STORE_URL = 'https://apps.microsoft.com/search/publisher?name=NTQ37';
+let STORE_URL = 'https://apps.microsoft.com/detail/9N6HCR3T80F2';
 let proAvailable = false;
 let proSku = PRO_SKU;
 let isPro = false;
