@@ -1,0 +1,18 @@
+{
+  "id": "./index.html",
+  "name": "BudgetPress - Envelope Budget",
+  "short_name": "BudgetPress",
+  "description": "Give every dollar a job. Envelope budgeting with goals, credit cards, split transactions, scheduled bills, bank file import, reports, forecast and debt payoff plan. Private, offline, no subscription.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f6f8f7",
+  "theme_color": "#1f7a5c",
+  "categories": ["finance", "productivity", "personalization"],
+  "icons": [
+    {"src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+    {"src": "icon-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ]
+}

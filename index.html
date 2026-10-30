@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BudgetPress – Envelope Budget</title>
+  <meta name="description" content="Give every dollar a job. Envelope budgeting for Windows with accounts, monthly budgets, goals, scheduled bills, bank CSV import and reports. Private, offline, no subscription.">
+  <meta name="theme-color" content="#1f7a5c">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icon-192.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><img src="icon-192.png" alt="" width="30" height="30"><span>BudgetPress</span></div>
+    <nav class="tabs" id="tabs">
+      <button data-t="budget" class="on">💰 Budget</button>
+      <button data-t="tx">🧾 Transactions</button>
+      <button data-t="accounts">🏦 Accounts</button>
+      <button data-t="reports">📊 Reports</button>
+      <button data-t="plan">📅 Plan</button>
+    </nav>
+    <div class="top-btns">
+      <button id="addTxTop" class="primary">＋ Transaction</button>
+      <button id="syncState" class="tb" hidden title="Sync"></button>
+      <button id="moreBtn" class="tb">☰ More</button>
+      <button id="proBtn" class="pro-btn" hidden>★ Get Pro</button>
+    </div>
+    <div id="menu" class="menu" hidden>
+      <label class="field" style="padding:6px 12px">Currency<select id="currency"></select></label>
+      <button id="budgetsBtn">📒 My budgets…</button>
+      <button id="undoBtn">↶ Undo (Ctrl+Z)</button>
+      <button id="payeesBtn">Manage payees…</button>
+      <button id="syncBtn">☁ Sync between my PCs (OneDrive, Google Drive…) ★</button>
+      <button id="pinBtn">🔒 Lock with a PIN…</button>
+      <button id="printBudgetBtn">🖨 Print this month's budget ★</button>
+      <button id="printEnvBtn">🖨 Print cash envelopes</button>
+      <button id="backupBtn">Save a backup file</button>
+      <button id="restoreBtn2">Open a backup file…</button>
+      <button id="importBtn">Import bank file (CSV, OFX, QFX)… ★</button>
+      <button id="exportBtn">Export transactions (CSV for Excel)</button>
+      <button id="sampleBtn">Load a sample budget to look around</button>
+      <button id="clearBtn" class="danger">Start over with an empty budget…</button>
+      <a href="help.html" target="_blank" rel="noopener">❓ How to use BudgetPress</a>
+      <a href="why.html" target="_blank" rel="noopener">⭐ Why BudgetPress – no subscription</a>
+      <a href="mailto:thequan03072002@gmail.com?subject=BudgetPress%20feedback">✉ Feedback &amp; support</a>
+    </div>
+    <input id="fileIn" type="file" hidden>
+  </header>
+
+  <main id="pane-budget" class="pane1"><div class="wrap">
+    <div class="month-bar">
+      <button id="mPrev" class="ghost">‹</button><h2 id="mTitle"></h2><button id="mNext" class="ghost">›</button>
+      <div id="rta" class="rta"></div>
+    </div>
+    <div class="tools">
+      <select id="autoAssign" style="width:auto"><option value="">⚡ Auto-assign…</option><option value="goals">Underfunded goals</option><option value="lastAssigned">Assigned last month</option><option value="lastSpent">Spent last month</option><option value="avgAssigned">Average assigned (3 months)</option><option value="avgSpent">Average spent (3 months)</option><option value="resetAssigned">Reset assigned to zero</option></select>
+      <button id="moveBtn" class="ghost">⇄ Move money</button>
+      <label class="check" style="margin:0"><input id="showHidden" type="checkbox"> Show hidden</label>
+      <button id="addGroup" class="ghost">＋ Add group</button>
+      <span id="aom" class="hint" style="align-self:center;margin-left:auto"></span>
+    </div>
+    <table class="grid" id="budgetTbl">
+      <thead><tr><th>Category</th><th>Assigned</th><th class="hide-sm">Activity</th><th>Available</th></tr></thead>
+      <tbody id="budgetBody"></tbody>
+    </table>
+  </div></main>
+
+  <main id="pane-tx" class="pane1" hidden><div class="wrap">
+    <div class="filters">
+      <select id="fAcct"></select>
+      <select id="fCat"></select>
+      <select id="fMonth"></select>
+      <select id="fFlag"><option value="">All flags</option><option value="red">🔴 Red</option><option value="orange">🟠 Orange</option><option value="yellow">🟡 Yellow</option><option value="green">🟢 Green</option><option value="blue">🔵 Blue</option><option value="purple">🟣 Purple</option><option value="uncat">Uncategorized only</option><option value="unclr">Not cleared</option></select>
+      <input id="fSearch" type="search" placeholder="Search payee or memo…">
+      <button id="reconBtn" class="ghost" hidden>✔ Reconcile</button>
+      <button id="addTx" class="primary">＋ Add transaction</button>
+    </div>
+    <p id="txSum" class="hint"></p>
+    <table class="grid tx">
+      <thead><tr><th style="width:18px"></th><th>Date</th><th>Account</th><th>Payee</th><th>Category</th><th class="hide-sm">Memo</th><th style="text-align:right">Outflow</th><th style="text-align:right">Inflow</th><th id="balHead" style="text-align:right">Balance</th><th title="Cleared">✓</th></tr></thead>
+      <tbody id="txBody"></tbody>
+    </table>
+    <p id="txEmpty" class="empty" hidden>No transactions yet. Click <b>＋ Add transaction</b>, or import a CSV file from your bank (☰ More).</p>
+    <div class="panel" style="margin-top:16px">
+      <h3>🔁 Scheduled bills &amp; income <span class="badge" id="schedBadge" hidden>PRO</span></h3>
+      <p class="hint">Rent, salary, subscriptions… added automatically on their date.</p>
+      <div id="schedList"></div>
+      <button id="addSched" class="ghost">＋ Add scheduled transaction</button>
+    </div>
+  </div></main>
+
+  <main id="pane-accounts" class="pane1" hidden><div class="wrap">
+    <div class="month-bar"><h2 style="text-align:left">Accounts</h2><div id="netWorth" class="rta"></div></div>
+    <div id="acctCards" class="cards"></div>
+    <p class="hint">Credit cards: spend from your budget categories as usual, then pay the card with a <b>Transfer</b> from your checking account.</p>
+  </div></main>
+
+  <main id="pane-reports" class="pane1" hidden><div class="wrap">
+    <div class="month-bar"><button id="rPrev" class="ghost">‹</button><h2 id="rTitle"></h2><button id="rNext" class="ghost">›</button></div>
+    <div class="panel"><h3>Spending this month</h3><div id="repSpend" class="chart"></div></div>
+    <div class="panel"><h3>Income vs spending – last 12 months <span class="badge" id="repBadge" hidden>PRO</span></h3><div id="repTrend" class="chart"></div></div>
+    <div class="panel"><h3>Net worth <span class="badge" id="repBadge2" hidden>PRO</span></h3><div id="repNet" class="chart"></div></div>
+  </div></main>
+
+
+  <main id="pane-plan" class="pane1" hidden><div class="wrap">
+    <div class="panel"><h3>📈 Balance forecast – next 60 days <span class="badge pro-only">PRO</span></h3><p class="hint">Your checking, savings and cash today, plus every scheduled bill and paycheck. Know before you run short.</p><div id="forecast" class="chart"></div></div>
+    <div class="panel"><div class="month-bar" style="margin:0 0 8px"><h3 style="margin:0">🗓 Bill calendar <span class="badge pro-only">PRO</span></h3><span style="margin-left:auto"></span><button id="calPrev" class="ghost">‹</button><b id="calTitle"></b><button id="calNext" class="ghost">›</button></div><div id="calendar"></div></div>
+    <div class="panel"><h3>🏁 Debt payoff plan <span class="badge pro-only">PRO</span></h3>
+      <p class="hint">Uses your credit cards and loans. Set each one's interest rate and minimum payment in Accounts (click the account).</p>
+      <div class="filters"><label class="field" style="margin:0">Extra each month<input id="extraDebt" type="text" inputmode="decimal" style="width:140px"></label>
+      <label class="field" style="margin:0">Strategy<select id="strategy"><option value="avalanche">Avalanche – highest interest first (saves most)</option><option value="snowball">Snowball – smallest balance first (quick wins)</option></select></label></div>
+      <div id="debtPlan"></div></div>
+  </div></main>
+  <!-- transaction dialog -->
+  <dialog id="txDlg" class="dlg">
+    <h2 id="txTitle">Transaction</h2>
+    <div class="seg" id="txKind"><button data-k="out" class="on">Expense</button><button data-k="in">Income</button><button data-k="xfer">Transfer</button></div>
+    <div class="two">
+      <label class="field">Amount<input id="tAmt" type="text" inputmode="decimal" placeholder="0.00"></label>
+      <label class="field">Date<input id="tDate" type="date"></label>
+    </div>
+    <label class="field" id="tPayeeRow">Payee<input id="tPayee" type="text" list="payees" maxlength="60" placeholder="e.g. Walmart"></label>
+    <datalist id="payees"></datalist>
+    <label class="field" id="tCatRow">Category<select id="tCat"></select></label>
+    <div id="tSplitBox" hidden><p class="hint" style="margin-top:10px">Split this transaction across categories:</p><div id="tSplits"></div><div class="row-btns" style="margin-top:4px"><button id="tAddSplit" class="ghost">＋ Add line</button><span id="tSplitLeft" class="hint" style="align-self:center"></span></div></div>
+    <button id="tSplitBtn" class="ghost" style="margin-top:6px;padding:4px 10px;font-size:13px">✂ Split into several categories</button>
+    <div class="two">
+      <label class="field"><span id="tAcctLbl">Account</span><select id="tAcct"></select></label>
+      <label class="field" id="tToRow">To account<select id="tTo"></select></label>
+    </div>
+    <label class="field">Memo<input id="tMemo" type="text" maxlength="100"></label>
+    <div class="two"><label class="field">Flag<select id="tFlag"><option value="">No flag</option><option value="red">🔴 Red</option><option value="orange">🟠 Orange</option><option value="yellow">🟡 Yellow</option><option value="green">🟢 Green</option><option value="blue">🔵 Blue</option><option value="purple">🟣 Purple</option></select></label>
+    <label class="check" style="margin-top:28px"><input id="tCleared" type="checkbox"> Cleared</label></div>
+    <div class="row-btns"><button id="tSave" class="primary">Save</button><button id="tSaveNew" class="ghost">Save &amp; add another</button><button id="tDel" class="ghost danger">Delete</button><button id="tClose" class="ghost">Cancel</button></div>
+  </dialog>
+
+  <!-- category dialog -->
+  <dialog id="catDlg" class="dlg">
+    <h2>Category</h2>
+    <label class="field">Name<input id="cName" type="text" maxlength="40"></label>
+    <label class="field">Group<select id="cGroup"></select></label>
+    <h3 style="margin:14px 0 4px">🎯 Goal <span class="badge" id="goalBadge" hidden>PRO</span></h3>
+    <select id="cGoalType"><option value="none">No goal</option><option value="monthly">Set aside an amount every month</option><option value="refill">Refill up to an amount every month</option><option value="weekly">Set aside an amount every week</option><option value="by">Have a total saved by a date</option><option value="yearly">Have a total saved every year (e.g. insurance)</option></select>
+    <div class="two" id="cGoalRow">
+      <label class="field">Amount<input id="cGoalAmt" type="text" inputmode="decimal"></label>
+      <label class="field" id="cGoalDateRow">By<input id="cGoalDate" type="month"></label>
+    </div>
+    <label class="field">Note<textarea id="cNote" rows="2" maxlength="300"></textarea></label>
+    <label class="check"><input id="cHidden" type="checkbox"> Hide this category</label>
+    <div class="row-btns"><button id="cUp" class="ghost">↑ Move up</button><button id="cDown" class="ghost">↓ Move down</button></div>
+    <div class="row-btns"><button id="cSave" class="primary">Save</button><button id="cDel" class="ghost danger">Delete category</button><button id="cClose" class="ghost">Cancel</button></div>
+  </dialog>
+
+  <!-- account dialog -->
+  <dialog id="acctDlg" class="dlg">
+    <h2>Account</h2>
+    <label class="field">Name<input id="aName" type="text" maxlength="40" placeholder="e.g. Chase Checking"></label>
+    <label class="field">Type<select id="aType"><option value="checking">Checking</option><option value="savings">Savings</option><option value="cash">Cash</option><option value="credit">Credit card</option><option value="loan">Loan / mortgage (tracking)</option><option value="asset">Asset, e.g. house or car (tracking)</option><option value="invest">Investment (tracking)</option></select></label>
+    <div class="two" id="aStartRow">
+      <label class="field">Balance today<input id="aBal" type="text" inputmode="decimal" placeholder="0.00"></label>
+      <label class="field">As of<input id="aDate" type="date"></label>
+    </div>
+    <div class="two" id="aDebtRow"><label class="field">Interest rate (APR %)<input id="aApr" type="text" inputmode="decimal" placeholder="e.g. 22.9"></label><label class="field">Minimum payment<input id="aMin" type="text" inputmode="decimal"></label></div>
+    <p class="hint" id="aHint">For a credit card or loan, type what you owe (e.g. 350). Money in checking, savings and cash is added to <b>Ready to Assign</b>. Tracking accounts count toward net worth but not your budget.</p>
+    <label class="check" id="aClosedRow"><input id="aClosed" type="checkbox"> Account is closed (hide it)</label>
+    <div class="row-btns"><button id="aSave" class="primary">Save</button><button id="aDel" class="ghost danger">Delete account</button><button id="aClose" class="ghost">Cancel</button></div>
+  </dialog>
+
+  <!-- scheduled dialog -->
+  <dialog id="schedDlg" class="dlg">
+    <h2>Scheduled transaction</h2>
+    <div class="seg" id="sKind"><button data-k="out" class="on">Expense</button><button data-k="in">Income</button><button data-k="xfer">Transfer</button></div>
+    <div class="two">
+      <label class="field">Amount<input id="sAmt" type="text" inputmode="decimal"></label>
+      <label class="field">Next date<input id="sDate" type="date"></label>
+    </div>
+    <label class="field" id="sPayeeRow">Payee<input id="sPayee" type="text" list="payees" maxlength="60"></label>
+    <div class="two">
+      <label class="field" id="sCatRow">Category<select id="sCat"></select></label>
+      <label class="field">Account<select id="sAcct"></select></label>
+    </div>
+    <label class="field" id="sToRow">To account<select id="sTo"></select></label>
+    <label class="field">Repeats<select id="sEvery"><option value="month">Every month</option><option value="week">Every week</option><option value="2week">Every 2 weeks</option><option value="year">Every year</option></select></label>
+    <div class="row-btns"><button id="sSave" class="primary">Save</button><button id="sDel" class="ghost danger">Delete</button><button id="sClose" class="ghost">Cancel</button></div>
+  </dialog>
+
+  <!-- import dialog -->
+  <dialog id="impDlg" class="dlg">
+    <h2>Import bank CSV</h2>
+    <p class="hint" id="impInfo"></p>
+    <label class="field">Into account<select id="iAcct"></select></label>
+    <div id="iCsv"><div class="two">
+      <label class="field">Date column<select id="iDate"></select></label>
+      <label class="field">Payee / description<select id="iPayee"></select></label>
+    </div>
+    <div class="two">
+      <label class="field">Amount column<select id="iAmt"></select></label>
+      <label class="field">Or: outflow column<select id="iOut"></select></label>
+    </div>
+    <label class="check"><input id="iFlip" type="checkbox"> Spending shows as positive numbers (flip signs)</label>
+    <label class="field">Dates look like<select id="iDateFmt"><option value="auto">Detect automatically</option><option value="mdy">Month/Day/Year</option><option value="dmy">Day/Month/Year</option><option value="ymd">Year-Month-Day</option></select></label></div>
+    <p class="hint">Payees you have used before get the same category. Duplicates are skipped.</p>
+    <div class="row-btns"><button id="iGo" class="primary">Import</button><button id="iClose" class="ghost">Cancel</button></div>
+  </dialog>
+
+  <dialog id="proDialog" class="dlg">
+    <h2>BudgetPress Pro</h2>
+    <p class="muted">One-time purchase. Yours forever on this Microsoft account – no subscription, ever. Popular subscription budget apps cost about $109 every year.</p>
+    <ul class="pro-list">
+      <li><strong>Unlimited accounts</strong> <span class="muted">(Free: 3)</span></li>
+      <li><strong>Goals</strong> – monthly targets and save-by-date</li>
+      <li><strong>Scheduled bills &amp; income</strong> added automatically</li>
+      <li><strong>Import bank CSV files</strong></li>
+      <li><strong>12-month trends and net worth</strong> reports</li>
+      <li><strong>60-day forecast, bill calendar and debt payoff plan</strong></li>
+      <li><strong>Sync between your PCs</strong> through OneDrive, Google Drive or Dropbox – optional encryption</li>
+      <li><strong>Several budgets</strong> and printable monthly budget</li>
+    </ul>
+    <p id="proMsg" class="pro-msg" hidden></p>
+    <p id="trialInfo" class="pro-msg" hidden></p>
+    <div class="row-btns">
+      <button id="trialBtn" class="ghost" hidden>Try every Pro feature free for 7 days</button>
+      <button id="buyBtn" class="primary">Unlock Pro</button>
+      <button id="restoreBtn" class="ghost">Restore purchase</button>
+      <button id="closePro" class="ghost">Not now</button>
+    </div>
+  </dialog>
+
+
+  <dialog id="moveDlg" class="dlg">
+    <h2>Move money</h2>
+    <label class="field">Amount<input id="mvAmt" type="text" inputmode="decimal"></label>
+    <div class="two"><label class="field">From<select id="mvFrom"></select></label><label class="field">To<select id="mvTo"></select></label></div>
+    <p class="hint" id="mvHint"></p>
+    <div class="row-btns"><button id="mvGo" class="primary">Move</button><button id="mvClose" class="ghost">Cancel</button></div>
+  </dialog>
+  <dialog id="reconDlg" class="dlg">
+    <h2>Reconcile <span id="rcName"></span></h2>
+    <p class="hint">Look at your bank's website or statement. What is the balance there today?</p>
+    <label class="field">Bank balance<input id="rcBal" type="text" inputmode="decimal"></label>
+    <p id="rcMsg" class="pro-msg"></p>
+    <div class="row-btns"><button id="rcGo" class="primary">Reconcile</button><button id="rcClose" class="ghost">Cancel</button></div>
+  </dialog>
+  <dialog id="budgetsDlg" class="dlg">
+    <h2>My budgets</h2>
+    <p class="hint">Keep separate budgets – for example personal, a side business, or a shared household.</p>
+    <div id="budgetsList"></div>
+    <div class="row-btns"><button id="bNew" class="primary">＋ New budget</button><button id="bRename" class="ghost">Rename this one</button><button id="bDelete" class="ghost danger">Delete this one</button><button id="bClose" class="ghost">Close</button></div>
+  </dialog>
+  <dialog id="payeesDlg" class="dlg">
+    <h2>Payees</h2>
+    <p class="hint">Rename a payee to fix it everywhere, or rename one to another's name to merge them.</p>
+    <div id="payeesList" style="max-height:50vh;overflow:auto"></div>
+    <div class="row-btns"><button id="pyClose" class="ghost">Close</button></div>
+  </dialog>
+  <dialog id="pinDlg" class="dlg">
+    <h2>🔒 PIN lock</h2>
+    <p class="hint">Ask for a PIN every time BudgetPress opens. If you forget it, you can only reset the app (keep backups!).</p>
+    <label class="field">New PIN (4–8 digits, empty to turn off)<input id="pinNew" type="password" inputmode="numeric" maxlength="8"></label>
+    <div class="row-btns"><button id="pinSave" class="primary">Save</button><button id="pinClose" class="ghost">Cancel</button></div>
+  </dialog>
+  <div id="lock" class="lock" hidden><div class="lock-box"><img src="icon-192.png" width="64" height="64" alt=""><h2>BudgetPress</h2><input id="lockPin" type="password" inputmode="numeric" maxlength="8" placeholder="PIN"><button id="lockGo" class="primary">Unlock</button><p id="lockMsg" class="hint"></p></div></div>
+  <style id="pageRule"></style>
+  <div id="printArea"></div>
+
+  <dialog id="syncDlg" class="dlg">
+    <h2>☁ Sync between your PCs</h2>
+    <p class="hint">BudgetPress keeps this budget in one file inside a folder that your cloud drive already syncs – <b>OneDrive</b>, <b>Google Drive</b>, <b>Dropbox</b> or <b>iCloud Drive</b>. Open the same file on your other PCs and they stay up to date. No BudgetPress account, no BudgetPress server.</p>
+    <p id="syncInfo" class="pro-msg"></p>
+    <div id="syncSetup">
+      <label class="field">Password to encrypt the file (optional, recommended)<input id="syncPass" type="password" maxlength="100" placeholder="Leave empty for no encryption"></label>
+      <p class="hint">With a password, the file is unreadable to anyone else – even if someone gets into your cloud drive. You need the same password on your other PCs. It cannot be recovered if you forget it.</p>
+      <div class="row-btns"><button id="syncCreate" class="primary">Create a sync file…</button><button id="syncOpen" class="ghost">Use a sync file from another PC…</button></div>
+    </div>
+    <div class="row-btns"><button id="syncNowBtn" class="ghost">⟳ Sync now</button><button id="syncStop" class="ghost danger">Stop syncing on this PC</button><button id="syncClose" class="ghost">Close</button></div>
+  </dialog>
+  <div id="toast" class="toast" hidden></div>
+  <script src="app.js"></script>
+</body>
+</html>
