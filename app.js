@@ -14,21 +14,33 @@ let proAvailable = false;
 proAvailable = true; // owner's rule: Pro is never free – free limits apply everywhere (website, Store, offline) until Pro is bought
 let proSku = PRO_SKU;
 let isPro = false;
-try { isPro = localStorage.getItem('budgetpress-pro') === '1'; } catch (_) {}
+try { // the saved Pro flag is trusted only in the Store app, and only for 30 days after the Store last confirmed it
+  if ('getDigitalGoodsService' in window && localStorage.getItem('budgetpress-pro') === '1') {
+    const ok = localStorage.getItem('budgetpress-pro-ok'), t = Number(ok), now = Date.now();
+    if (ok === null) { localStorage.setItem('budgetpress-pro-ok', String(now)); isPro = true; } // saved by an older version: counts as confirmed now, once
+    else isPro = t > 0 && t <= now && now - t < 30 * 864e5;
+  }
+} catch (_) {}
+function savePro(v) { // only called when the Store answered
+  try { if (v) { localStorage.setItem('budgetpress-pro', '1'); localStorage.setItem('budgetpress-pro-ok', String(Date.now())); } else { localStorage.removeItem('budgetpress-pro'); localStorage.removeItem('budgetpress-pro-ok'); } } catch (_) {}
+}
 // one-time free trial of every Pro feature
 const TRIAL_DAYS = 7, DAY = 86400000;
 let trialStart = 0;
-try { trialStart = Number(localStorage.getItem('budgetpress-trial')) || 0; } catch (_) {}
+// a trial start that is missing = no trial yet; one in the future, NaN or garbage counts as an ended trial (1 = long ago)
+const trialVal = (v) => { if (v == null) return 0; const n = Number(v); return n > 0 && n <= Date.now() ? n : 1; };
+try { trialStart = trialVal(localStorage.getItem('budgetpress-trial')); } catch (_) {}
 const trialLeft = () => (trialStart ? Math.max(0, Math.ceil((trialStart + TRIAL_DAYS * DAY - Date.now()) / DAY)) : 0);
 const trialActive = () => trialLeft() > 0;
 const unlocked = () => isPro || !proAvailable || trialActive();
 async function loadTrial() { // kept in two places so clearing one does not restart the trial
-  const t = await dbGet('trial').catch(() => 0);
-  trialStart = Math.max(trialStart, Number(t) || 0);
+  const t = await dbGet('trial').catch(() => null);
+  trialStart = Math.max(trialStart, trialVal(t));
   if (trialStart) { try { localStorage.setItem('budgetpress-trial', String(trialStart)); } catch (_) {} dbSet('trial', trialStart).catch(() => {}); }
 }
 async function startTrial() {
-  if (trialStart) return;
+  await loadTrial(); // a trial started earlier (in either store) cannot be started again
+  if (trialStart) { setPro(isPro); openPro(''); return; }
   trialStart = Date.now();
   try { localStorage.setItem('budgetpress-trial', String(trialStart)); } catch (_) {}
   await dbSet('trial', trialStart).catch(() => {});
@@ -42,7 +54,6 @@ async function billing() {
 }
 function setPro(v) {
   isPro = v;
-  try { localStorage.setItem('budgetpress-pro', v ? '1' : '0'); } catch (_) {}
   const b = $('proBtn');
   b.textContent = proLabel();
   b.classList.toggle('is-pro', v || trialActive());
@@ -65,7 +76,7 @@ async function checkPro() {
     if (details[0]) { proSku = details[0].itemId; if (!PRO_IDS.includes(proSku)) PRO_IDS.push(proSku); }
     const list = await svc.listPurchases();
     const owned = list.some((p) => PRO_IDS.includes(p.itemId));
-    if (owned || details.length) { setPro(owned); return owned; }
+    if (owned || details.length) { savePro(owned); setPro(owned); return owned; }
     setPro(isPro); // Store did not answer (offline): keep what we knew
     return isPro;
   } catch (_) { return isPro; }
@@ -108,7 +119,7 @@ async function buyPro() {
 }
 const needsPro = (why) => { if (unlocked()) return false; openPro(why); return true; };
 // budgets beyond the first one (from the trial) can be viewed, exported and backed up; adding to them needs Pro
-const budgetNeedsPro = () => !unlocked() && budgets.findIndex((b) => b.id === curBudget) > 0 && needsPro('Keeping several budgets is part of BudgetPress Pro. You can view and export this budget – Pro lets you keep adding to it.');
+const budgetNeedsPro = () => !unlocked() && budgets.findIndex((b) => b.id === curBudget) > 0 && needsPro('Keeping several budgets is part of BudgetPress Pro. You can view and export this budget – Pro lets you keep using it.');
 
 // ---------- money and dates ----------
 const CURRENCIES = ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'NZD', 'CHF', 'SEK', 'NOK', 'DKK', 'PLN', 'CZK', 'INR', 'JPY', 'SGD', 'HKD', 'ZAR', 'MXN', 'BRL', 'PHP', 'VND'];
@@ -170,6 +181,7 @@ function save() { scheduleSync(); const be = budgets.find((b) => b.id === curBud
 const undoStack = [], redoStack = [];
 function allIds() { return [...D.tx.map((t) => t.id), ...D.accounts.map((a) => a.id), ...(D.sched || []).map((x) => x.id), ...D.groups.flatMap((g) => g.cats.map((c) => c.id))]; }
 function change(fn) {
+  if (budgetNeedsPro()) { renderAll(); return; } // budgets beyond the first one (from the trial) can be viewed, exported and backed up – changing them needs Pro
   undoStack.push(JSON.stringify(D)); if (undoStack.length > 40) undoStack.shift(); redoStack.length = 0;
   const before = new Set(allIds());
   fn(); ccSync();
@@ -583,6 +595,7 @@ function deleteAcct() {
 function openRecon() { const a = acctById(txFilter.acct); if (!a) return; $('rcName').textContent = a.name; $('rcBal').value = ''; $('rcMsg').textContent = `BudgetPress cleared balance: ${fmt(balances()[a.id].cleared)}`; $('reconDlg').showModal(); $('rcBal').focus(); }
 function doRecon() {
   const a = acctById(txFilter.acct); let bank = parseMoney($('rcBal').value); if (isNaN(bank)) { toast('Type the balance from your bank'); return; }
+  if (!unlocked() && D.accounts.indexOf(a) >= FREE_ACCOUNTS && needsPro(`The free version holds ${FREE_ACCOUNTS} accounts. You can view and export this account – Pro lets you keep adding to it.`)) return;
   if (isDebtAcct(a) && bank > 0) bank = -bank;
   const cleared = balances()[a.id].cleared, diff = bank - cleared;
   if (diff && !confirm(`Your bank says ${fmt(bank)} but your cleared transactions add up to ${fmt(cleared)}.\n\nAdd a ${fmt(diff)} adjustment so they match? (Cancel to look for the missing transaction first.)`)) return;

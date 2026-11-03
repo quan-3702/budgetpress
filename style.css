@@ -196,3 +196,5 @@ table.grid { width: 100%; border-collapse: collapse; background: var(--card); bo
   #addTxTop { padding: 6px 10px; }
   .grid.tx .hide-sm { display: none; }
 }
+.fb-note { color: var(--muted); font-size: 13px; line-height: 1.45; margin: 12px 0 0; overflow-wrap: anywhere; }
+.fb-note a { color: var(--accent); }
