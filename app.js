@@ -11,7 +11,7 @@ const PRO_SKU = 'budgetpress_pro';
 const PRO_IDS = [PRO_SKU];
 let STORE_URL = 'https://apps.microsoft.com/detail/9N6HCR3T80F2';
 let proAvailable = false;
-try { if ('getDigitalGoodsService' in window && localStorage.getItem('budgetpress-proavail') === '1') proAvailable = true; } catch (_) {} // keep Pro limits when offline
+proAvailable = true; // owner's rule: Pro is never free – free limits apply everywhere (website, Store, offline) until Pro is bought
 let proSku = PRO_SKU;
 let isPro = false;
 try { isPro = localStorage.getItem('budgetpress-pro') === '1'; } catch (_) {}
@@ -62,7 +62,6 @@ async function checkPro() {
   if (!svc) return false;
   try {
     const details = await svc.getDetails(PRO_IDS).catch(() => []);
-    if (details.length) { proAvailable = true; try { localStorage.setItem('budgetpress-proavail', '1'); } catch (_) {} }
     if (details[0]) { proSku = details[0].itemId; if (!PRO_IDS.includes(proSku)) PRO_IDS.push(proSku); }
     const list = await svc.listPurchases();
     const owned = list.some((p) => PRO_IDS.includes(p.itemId));
@@ -83,6 +82,7 @@ async function openPro(reason) {
     $('restoreBtn').hidden = false;
     try {
       const [d] = await svc.getDetails([proSku]);
+      if (!d) proMessage((reason ? reason + ' ' : '') + 'Pro is being added to the Microsoft Store and will be on sale very soon – please check again in a day or two.');
       const price = d && d.price ? new Intl.NumberFormat(undefined, { style: 'currency', currency: d.price.currency }).format(Number(d.price.value)) : '';
       $('buyBtn').textContent = price ? `Unlock Pro – ${price}` : 'Unlock Pro';
     } catch (_) { $('buyBtn').textContent = 'Unlock Pro'; }
@@ -107,6 +107,8 @@ async function buyPro() {
   if (await checkProAfterBuy()) { proMessage('Thank you! Pro is unlocked. ★'); setTimeout(() => $('proDialog').close(), 1500); }
 }
 const needsPro = (why) => { if (unlocked()) return false; openPro(why); return true; };
+// budgets beyond the first one (from the trial) can be viewed, exported and backed up; adding to them needs Pro
+const budgetNeedsPro = () => !unlocked() && budgets.findIndex((b) => b.id === curBudget) > 0 && needsPro('Keeping several budgets is part of BudgetPress Pro. You can view and export this budget – Pro lets you keep adding to it.');
 
 // ---------- money and dates ----------
 const CURRENCIES = ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'NZD', 'CHF', 'SEK', 'NOK', 'DKK', 'PLN', 'CZK', 'INR', 'JPY', 'SGD', 'HKD', 'ZAR', 'MXN', 'BRL', 'PHP', 'VND'];
@@ -498,6 +500,9 @@ function saveTx(again) {
   if (!(amt > 0)) { toast('Type the amount'); $('tAmt').focus(); return; }
   const acct = $('tAcct').value, sign = txKind === 'in' ? 1 : -1, date = $('tDate').value || todayStr();
   if (!editTx && !acctById(acct)) return;
+  // accounts / budgets beyond the free limit (from the trial) can be viewed and exported; adding to them needs Pro
+  if (!editTx && !unlocked() && (budgets.findIndex((b) => b.id === curBudget) > 0 || [acct, txKind === 'xfer' ? $('tTo').value : ''].some((id) => D.accounts.findIndex((a) => a.id === id) >= FREE_ACCOUNTS))
+    && needsPro(budgets.findIndex((b) => b.id === curBudget) > 0 ? 'Keeping several budgets is part of BudgetPress Pro. You can view and export this budget – Pro lets you keep adding to it.' : `The free version holds ${FREE_ACCOUNTS} accounts. You can view and export this account – Pro lets you keep adding to it.`)) return;
   if (txKind === 'xfer') {
     const to = $('tTo').value; if (!to || to === acct) { toast('Pick the account the money goes to'); return; }
     const cat = xferNeedsCat() ? ($('tCat').value || null) : null;
@@ -544,6 +549,7 @@ function renderAccounts() {
 let editAcct = null;
 function openAcct(id) {
   editAcct = id ? acctById(id) : null;
+  if (!editAcct && budgetNeedsPro()) return;
   if (!editAcct && D.accounts.length >= FREE_ACCOUNTS && needsPro(`The free version holds ${FREE_ACCOUNTS} accounts. Unlock Pro for unlimited accounts.`)) return;
   const a = editAcct || { name: '', type: 'checking', apr: '', minPay: 0 };
   $('aName').value = a.name; $('aType').value = a.type; $('aType').disabled = !!editAcct;
@@ -836,10 +842,11 @@ async function tryUnlock() { let h = ''; try { h = localStorage.getItem('budgetp
 function sampleBudget() {
   const d = blankBudget('Sample Budget'); D = d;
   const ch = { id: uid('a'), name: 'Everyday Checking', type: 'checking' }, sv = { id: uid('a'), name: 'Savings', type: 'savings' }, cc = { id: uid('a'), name: 'Visa Card', type: 'credit', apr: 22.9, minPay: 4000 }, car = { id: uid('a'), name: 'Car Loan', type: 'loan', apr: 6.5, minPay: 32000 };
-  d.accounts.push(ch, sv, cc, car); ccSync();
+  d.accounts.push(ch, sv, cc); if (unlocked()) d.accounts.push(car); // free sample stays within the free limits (3 accounts, no goals or schedules)
+  ccSync();
   const cat = (n) => allCats().find((c) => c.name === n).id;
   const m0 = mAdd(thisMonth(), -2), tx = (date, acct, payee, c, amount) => d.tx.push({ id: uid('t'), date, acct: acct.id, payee, cat: c, amount, memo: '', cleared: date < todayStr() ? 'c' : 'u', flag: '', xfer: null });
-  tx(m0 + '-01', ch, 'Starting balance', 'rta', 285000); tx(m0 + '-01', sv, 'Starting balance', 'rta', 600000); tx(m0 + '-01', cc, 'Starting balance', '__start', -45000); tx(m0 + '-01', car, 'Starting balance', null, -1240000);
+  tx(m0 + '-01', ch, 'Starting balance', 'rta', 285000); tx(m0 + '-01', sv, 'Starting balance', 'rta', 600000); tx(m0 + '-01', cc, 'Starting balance', '__start', -45000); if (unlocked()) tx(m0 + '-01', car, 'Starting balance', null, -1240000);
   const today = todayStr();
   for (let k = 0; k < 3; k++) {
     const m = mAdd(m0, k), dd = (n) => `${m}-${pad(n)}`, ok = (n) => dd(n) <= today;
@@ -854,9 +861,9 @@ function sampleBudget() {
     if (ok(26)) { const id1 = uid('t'), id2 = uid('t'); d.tx.push({ id: id1, date: dd(26), acct: ch.id, payee: '', cat: null, amount: -30000, memo: 'Card payment', cleared: 'c', flag: '', xfer: { acct: cc.id, pair: id2 } }, { id: id2, date: dd(26), acct: cc.id, payee: '', cat: null, amount: 30000, memo: 'Card payment', cleared: 'c', flag: '', xfer: { acct: ch.id, pair: id1 } }); }
     d.assigned[m] = { [cat('Rent / Mortgage')]: 140000, [cat('Groceries')]: 60000, [cat('Electricity')]: 10000, [cat('Internet & Phone')]: 9000, [cat('Subscriptions')]: 1600, [cat('Transportation')]: 20000, [cat('Eating Out')]: 15000, [cat('Emergency Fund')]: k === 0 ? 450000 : 50000, [cat('Vacation')]: 25000, [cat('Gifts & Holidays')]: 10000, ['cc_' + cc.id]: k === 0 ? 45000 : 0 };
   }
-  allCats().forEach((c) => { const o = catById(c.id); if (c.name === 'Emergency Fund') o.goal = { type: 'by', amount: 1000000, date: mAdd(thisMonth(), 12) }; if (c.name === 'Groceries') o.goal = { type: 'monthly', amount: 60000 }; if (c.name === 'Vacation') o.goal = { type: 'by', amount: 250000, date: mAdd(thisMonth(), 7) }; if (c.name === 'Insurance') o.goal = { type: 'yearly', amount: 120000, date: thisMonth().slice(0, 4) + '-03' }; });
+  if (unlocked()) allCats().forEach((c) => { const o = catById(c.id); if (c.name === 'Emergency Fund') o.goal = { type: 'by', amount: 1000000, date: mAdd(thisMonth(), 12) }; if (c.name === 'Groceries') o.goal = { type: 'monthly', amount: 60000 }; if (c.name === 'Vacation') o.goal = { type: 'by', amount: 250000, date: mAdd(thisMonth(), 7) }; if (c.name === 'Insurance') o.goal = { type: 'yearly', amount: 120000, date: thisMonth().slice(0, 4) + '-03' }; });
   const nx = (day) => { const t = toDate(todayStr()); const x = new Date(t.getFullYear(), t.getMonth() + (t.getDate() >= day ? 1 : 0), day); return dStr(x); };
-  d.sched.push({ id: uid('s'), kind: 'in', amount: 215000, payee: 'Acme Corp Payroll', cat: 'rta', acct: ch.id, every: '2week', next: nx(15) }, { id: uid('s'), kind: 'out', amount: 140000, payee: 'Oakwood Apartments', cat: cat('Rent / Mortgage'), acct: ch.id, every: 'month', next: nx(1) }, { id: uid('s'), kind: 'out', amount: 1549, payee: 'Netflix', cat: cat('Subscriptions'), acct: cc.id, every: 'month', next: nx(8) }, { id: uid('s'), kind: 'xfer', amount: 30000, payee: '', cat: null, acct: ch.id, to: cc.id, every: 'month', next: nx(26) });
+  if (unlocked()) d.sched.push({ id: uid('s'), kind: 'in', amount: 215000, payee: 'Acme Corp Payroll', cat: 'rta', acct: ch.id, every: '2week', next: nx(15) }, { id: uid('s'), kind: 'out', amount: 140000, payee: 'Oakwood Apartments', cat: cat('Rent / Mortgage'), acct: ch.id, every: 'month', next: nx(1) }, { id: uid('s'), kind: 'out', amount: 1549, payee: 'Netflix', cat: cat('Subscriptions'), acct: cc.id, every: 'month', next: nx(8) }, { id: uid('s'), kind: 'xfer', amount: 30000, payee: '', cat: null, acct: ch.id, to: cc.id, every: 'month', next: nx(26) });
   d.extraDebt = 20000;
   return d;
 }
@@ -926,11 +933,11 @@ $('lockGo').onclick = tryUnlock; $('lockPin').addEventListener('keydown', (e) =>
 $('printBudgetBtn').onclick = printBudget; $('printEnvBtn').onclick = printEnvelopes;
 $('backupBtn').onclick = () => download(new Blob([JSON.stringify({ app: 'budgetpress', v: 1, budget: D })], { type: 'application/json' }), `${D.name.replace(/[\\/:*?"<>|]+/g, ' ')} ${todayStr()}.budgetpress.json`);
 function pickFile(accept, cb) { const i = $('fileIn'); i.value = ''; i.accept = accept; i.onchange = async () => { if (i.files[0]) cb(i.files[0], await i.files[0].text()); }; i.click(); }
-$('restoreBtn2').onclick = () => pickFile('.json,application/json', (f, text) => { try { const d = JSON.parse(text); if (d.app !== 'budgetpress' || !d.budget) throw 0; if (!confirm(`Replace the budget "${D.name}" with the one in this backup?`)) return; change(() => { const keepName = D.name; D = normalize(d.budget); D.name = D.name || keepName; }); toast('Backup opened'); } catch (_) { toast('That file is not a BudgetPress backup'); } });
+$('restoreBtn2').onclick = () => pickFile('.json,application/json', (f, text) => { try { const d = JSON.parse(text); if (d.app !== 'budgetpress' || !d.budget) throw 0; if (budgetNeedsPro()) return; const na = (d.budget.accounts || []).length; if (na > FREE_ACCOUNTS && !unlocked()) { openPro(`This backup holds ${na} accounts. The free version holds ${FREE_ACCOUNTS} – Pro opens all of them. The backup file is unchanged, so nothing is lost.`); return; } if (!confirm(`Replace the budget "${D.name}" with the one in this backup?`)) return; change(() => { const keepName = D.name; D = normalize(d.budget); D.name = D.name || keepName; }); toast('Backup opened'); } catch (_) { toast('That file is not a BudgetPress backup'); } });
 $('importBtn').onclick = () => { if (needsPro('Importing bank files is part of BudgetPress Pro.')) return; pickFile('.csv,.ofx,.qfx,.txt', startImport); };
 $('iGo').onclick = doImport; $('iClose').onclick = () => $('impDlg').close();
 $('exportBtn').onclick = exportCsv;
-$('sampleBtn').onclick = () => { if (D.tx.length && !confirm(`Replace "${D.name}" with a sample budget? Save a backup first if you want to keep it.`)) return; change(() => { const keep = D.name; D = sampleBudget(); D.name = keep === 'My Budget' ? 'Sample Budget' : keep; }); toast('Sample loaded – click around, nothing here is real'); };
+$('sampleBtn').onclick = () => { if (budgetNeedsPro()) return; if (D.tx.length && !confirm(`Replace "${D.name}" with a sample budget? Save a backup first if you want to keep it.`)) return; change(() => { const keep = D.name; D = sampleBudget(); D.name = keep === 'My Budget' ? 'Sample Budget' : keep; }); toast('Sample loaded – click around, nothing here is real'); };
 $('clearBtn').onclick = () => { if (!confirm(`Erase everything in "${D.name}" and start over? (You can undo with Ctrl+Z.)`)) return; change(() => { const n = D.name, c = D.currency; D = blankBudget(n); D.currency = c; }); };
 $('proBtn').onclick = () => { if (!isPro) openPro(''); }; $('trialBtn').onclick = startTrial;
 setInterval(() => { if (!isPro && trialStart) { const was = $('proBtn').textContent; if (was !== proLabel()) setPro(false); } }, 3600000); $('buyBtn').onclick = buyPro; $('closePro').onclick = () => $('proDialog').close();
@@ -1056,6 +1063,7 @@ function openSyncDlg() {
   $('syncDlg').showModal();
 }
 async function syncCreate() {
+  if (needsPro('Syncing between PCs is part of BudgetPress Pro.')) return;
   try {
     const handle = await window.showSaveFilePicker({ suggestedName: `${D.name.replace(/[\\/:*?"<>|]+/g, ' ')}.budgetpress-sync`, types: [{ description: 'BudgetPress sync file', accept: { 'application/json': ['.budgetpress-sync'] } }] });
     const pass = $('syncPass').value, salt = crypto.getRandomValues(new Uint8Array(16));
@@ -1067,6 +1075,7 @@ async function syncCreate() {
   } catch (e) { if (e && e.name !== 'AbortError') toast('Could not create the sync file: ' + (e.message || e)); }
 }
 async function syncOpen() {
+  if (needsPro('Syncing between PCs is part of BudgetPress Pro.')) return;
   try {
     const [handle] = await window.showOpenFilePicker({ types: [{ description: 'BudgetPress sync file', accept: { 'application/json': ['.budgetpress-sync'] } }] });
     const text = await (await handle.getFile()).text(), f = JSON.parse(text);
