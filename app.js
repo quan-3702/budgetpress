@@ -11,6 +11,7 @@ const PRO_SKU = 'budgetpress_pro';
 const PRO_IDS = [PRO_SKU];
 let STORE_URL = 'https://apps.microsoft.com/detail/9N6HCR3T80F2';
 let proAvailable = false;
+try { if ('getDigitalGoodsService' in window && localStorage.getItem('budgetpress-proavail') === '1') proAvailable = true; } catch (_) {} // keep Pro limits when offline
 let proSku = PRO_SKU;
 let isPro = false;
 try { isPro = localStorage.getItem('budgetpress-pro') === '1'; } catch (_) {}
@@ -48,17 +49,26 @@ function setPro(v) {
   b.hidden = !proAvailable && !v;
   renderAll();
 }
+async function checkProAfterBuy() {
+  for (let i = 0; i < 6; i++) {
+    if (await checkPro()) return true;
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+  proMessage('Thank you! If Pro is not unlocked within a minute, click “Restore purchase”.');
+  return false;
+}
 async function checkPro() {
   const svc = await billing();
   if (!svc) return false;
   try {
     const details = await svc.getDetails(PRO_IDS).catch(() => []);
-    proAvailable = details.length > 0;
+    if (details.length) { proAvailable = true; try { localStorage.setItem('budgetpress-proavail', '1'); } catch (_) {} }
     if (details[0]) { proSku = details[0].itemId; if (!PRO_IDS.includes(proSku)) PRO_IDS.push(proSku); }
     const list = await svc.listPurchases();
     const owned = list.some((p) => PRO_IDS.includes(p.itemId));
-    setPro(owned);
-    return owned;
+    if (owned || details.length) { setPro(owned); return owned; }
+    setPro(isPro); // Store did not answer (offline): keep what we knew
+    return isPro;
   } catch (_) { return isPro; }
 }
 function proMessage(text) { const m = $('proMsg'); m.hidden = !text; m.textContent = text || ''; }
@@ -94,7 +104,7 @@ async function buyPro() {
     proMessage('Purchase could not be completed: ' + (e.message || e));
     return;
   }
-  if (await checkPro()) { proMessage('Thank you! Pro is unlocked. ★'); setTimeout(() => $('proDialog').close(), 1500); }
+  if (await checkProAfterBuy()) { proMessage('Thank you! Pro is unlocked. ★'); setTimeout(() => $('proDialog').close(), 1500); }
 }
 const needsPro = (why) => { if (unlocked()) return false; openPro(why); return true; };
 
@@ -409,7 +419,7 @@ function groupMenu(gid) {
   const a = prompt(`Group "${g.name}"\n\nType a name for a NEW CATEGORY to add it to this group.\nType "rename: New name" to rename the group, or "delete" to delete the group.`, '');
   if (a == null || !a.trim()) return;
   const t = a.trim();
-  if (/^delete$/i.test(t)) { if (g.cats.length && !confirm(`Delete the group "${g.name}" and its ${g.cats.length} categories?`)) return; change(() => { g.cats.forEach((c) => { D.tx.forEach((x) => { if (x.cat === c.id) x.cat = null; }); Object.values(D.assigned).forEach((m) => delete m[c.id]); }); D.groups = D.groups.filter((x) => x !== g); }); return; }
+  if (/^delete$/i.test(t)) { if (g.cats.length && !confirm(`Delete the group "${g.name}" and its ${g.cats.length} categories?`)) return; change(() => { g.cats.forEach((c) => { D.tx.forEach((x) => { if (x.cat === c.id) x.cat = null; (x.splits || []).forEach((sp) => { if (sp.cat === c.id) sp.cat = null; }); }); Object.values(D.assigned).forEach((m) => delete m[c.id]); D.sched.forEach((sc) => { if (sc.cat === c.id) sc.cat = null; }); }); D.groups = D.groups.filter((x) => x !== g); }); return; }
   if (/^rename:/i.test(t)) { const n = t.slice(7).trim(); if (n) change(() => { g.name = n; }); return; }
   change(() => { g.cats.push({ id: uid('c'), name: t, hidden: false, note: '', goal: null }); });
 }
@@ -645,7 +655,9 @@ function lineChart(points, opts) { // [{x:label, y:cents}]
   s += `<text x="0" y="${sy(max) + 4}" font-size="11" fill="currentColor" opacity=".6">${esc(fmt(max))}</text><text x="0" y="${sy(min) + 4}" font-size="11" fill="currentColor" opacity=".6">${esc(fmt(min))}</text>`;
   s += `<polyline fill="none" stroke="${(opts && opts.color) || '#1f7a5c'}" stroke-width="2.5" points="${points.map((p, i) => `${sx(i).toFixed(1)},${sy(p.y).toFixed(1)}`).join(' ')}"/>`;
   const step = Math.ceil(points.length / 8);
-  points.forEach((p, i) => { if (i % step === 0 || i === points.length - 1) s += `<text x="${sx(i).toFixed(1)}" y="${H + 14}" font-size="11" text-anchor="middle" fill="currentColor">${esc(p.x)}</text>`; });
+  const idx = []; for (let i = 0; i < points.length; i += step) idx.push(i);
+  const lastI = points.length - 1; if (idx[idx.length - 1] !== lastI) { if (idx.length > 1 && lastI - idx[idx.length - 1] <= step / 2) idx.pop(); idx.push(lastI); } // last label must not overlap the one before
+  idx.forEach((i) => { s += `<text x="${sx(i).toFixed(1)}" y="${H + 14}" font-size="11" text-anchor="${i === lastI ? 'end' : 'middle'}" fill="currentColor">${esc(points[i].x)}</text>`; });
   return s + '</svg>';
 }
 const lockbox = (what) => `<div class="lockbox">${what} is part of <b>BudgetPress Pro</b>.<br><button class="primary" data-pro="1" style="margin-top:10px">See Pro</button></div>`;
@@ -815,7 +827,7 @@ function renderPayees() {
   const names = Object.keys(counts).sort((a, b) => a.localeCompare(b));
   $('payeesList').innerHTML = names.map((n) => `<div class="sched" data-p="${esc(n)}"><span>${esc(n)}</span><small>${counts[n]} transaction${counts[n] === 1 ? '' : 's'} · ${esc(catName(payeeCategory(n)))}</small></div>`).join('') || '<p class="hint">No payees yet.</p>';
 }
-function renamePayee(old) { const n = prompt(`Rename "${old}" to:`, old); if (!n || n === old) return; change(() => { D.tx.forEach((t) => { if (t.payee === old) t.payee = n.trim(); }); D.sched.forEach((s) => { if (s.payee === old) s.payee = n.trim(); }); }); renderPayees(); }
+function renamePayee(old) { const n = (prompt(`Rename "${old}" to:`, old) || '').trim(); if (!n || n === old) return; change(() => { D.tx.forEach((t) => { if (t.payee === old) t.payee = n; }); D.sched.forEach((s) => { if (s.payee === old) s.payee = n; }); }); renderPayees(); }
 async function sha(s) { const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('budgetpress:' + s)); return [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, '0')).join(''); }
 async function savePin() { const p = $('pinNew').value.trim(); if (p && !/^\d{4,8}$/.test(p)) { toast('Use 4 to 8 digits'); return; } try { if (p) localStorage.setItem('budgetpress-pin', await sha(p)); else localStorage.removeItem('budgetpress-pin'); } catch (_) {} $('pinDlg').close(); toast(p ? '🔒 PIN saved – BudgetPress will ask for it when it opens' : 'PIN lock turned off'); }
 async function tryUnlock() { let h = ''; try { h = localStorage.getItem('budgetpress-pin') || ''; } catch (_) {} if (!h || (await sha($('lockPin').value.trim())) === h) { $('lock').hidden = true; } else { $('lockMsg').textContent = 'Wrong PIN'; $('lockPin').value = ''; } }
@@ -882,7 +894,8 @@ $('tPayee').addEventListener('change', () => { if (!editTx && !splits) { const c
 $('tAmt').addEventListener('input', () => { if (splits) splitLeft(); });
 $('tSplitBtn').onclick = () => { const amt = parseMoney($('tAmt').value) || 0; splits = [{ cat: $('tCat').value || null, amount: amt }, { cat: null, amount: 0 }]; renderSplits(); };
 $('tAddSplit').onclick = () => { const total = parseMoney($('tAmt').value) || 0, used = splits.reduce((s, x) => s + Math.abs(x.amount || 0), 0); splits.push({ cat: null, amount: Math.max(0, total - used) }); renderSplits(); };
-$('tSplits').addEventListener('change', (e) => { const i = e.target.dataset.si; if (i == null) return; if (e.target.dataset.k === 'cat') splits[i].cat = e.target.value || null; else { const v = parseMoney(e.target.value); splits[i].amount = isNaN(v) ? 0 : Math.abs(v); } splitLeft(); });
+const splitEdit = (e) => { const i = e.target.dataset.si; if (i == null) return; if (e.target.dataset.k === 'cat') splits[i].cat = e.target.value || null; else { const v = parseMoney(e.target.value); splits[i].amount = isNaN(v) ? 0 : Math.abs(v); } splitLeft(); };
+$('tSplits').addEventListener('change', splitEdit); $('tSplits').addEventListener('input', splitEdit); // input: Enter saves before 'change' fires
 $('tSplits').addEventListener('click', (e) => { const d = e.target.closest('[data-del]'); if (!d) return; splits.splice(+d.dataset.del, 1); if (splits.length < 2) { $('tCat').value = (splits[0] && splits[0].cat) || ''; splits = null; } renderSplits(); });
 $('tSave').onclick = () => saveTx(false); $('tSaveNew').onclick = () => saveTx(true); $('tDel').onclick = deleteTx; $('tClose').onclick = () => $('txDlg').close();
 $('txDlg').addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.tagName === 'INPUT') { e.preventDefault(); saveTx(false); } });
@@ -941,6 +954,7 @@ document.addEventListener('keydown', (e) => {
     await loadBudget(budgets.some((b) => b.id === cur) ? cur : budgets[0].id);
   } catch (_) { D = blankBudget(); curBudget = 'mem'; renderAll(); toast('Storage is not available – changes will not be saved'); }
   $('currency').value = D.currency;
+  setPro(isPro); // show the Pro button / trial label from what we know, even if the Store does not answer
   checkPro();
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 })();
